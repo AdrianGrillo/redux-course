@@ -6,6 +6,8 @@
     <script src='https://unpkg.com/react-dom@16.13.1/umd/react-dom.development.js'></script>
     <script src='https://unpkg.com/babel-standalone@6.26.0/babel.min.js'></script>
     <script src='https://ui.dev/goals-todos-api/index.js'></script>
+    <script src='https://unpkg.com/redux-thunk@2.3.0/dist/redux-thunk.min.js'></script>
+    <script src='https://unpkg.com/react-redux@7.2.0/dist/react-redux.min.js'></script>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
@@ -113,6 +115,78 @@
         }
       }
 
+      const handleInitialData = () => {
+        return (dispatch) => {
+          Promise.all([
+              API.fetchTodos(),
+              API.fetchGoals()
+            ]).then(([ todos, goals ]) => {
+              store.dispatch(receiveDataAction(todos, goals))
+            })
+        }
+      }
+
+      const handleAddTodo = (name, callback) => {
+        return (dispatch) => {
+          return API.saveTodo(name)
+            .then((todo) => {
+              dispatch(addTodoAction(todo))
+              callback()
+            })
+            .catch(() => {
+              alert('An error occured, try again.')
+            })
+        }
+      }
+
+      const handleDeleteTodo = todo => {
+        return (dispatch) => {
+          dispatch(removeTodoAction(todo.id))
+
+          return API.deleteTodo(todo.id)
+            .catch(() => {
+              dispatch(addTodoAction(todo))
+              alert('An error has occured.')
+            })
+        }
+      }
+
+      const handleToggleTodo = id => {
+        return (dispatch) => {
+          dispatch(toggleTodoAction(id))
+
+          return API.saveTodoToggle(id)
+            .catch(() => {
+              dispatch(toggleTodoAction(id))
+              alert('An error occured, try again.')
+            })
+        }
+      }
+      
+      const handleSaveGoal = (name, callback) => {
+        return (dispatch) => {
+          API.saveGoal(name)
+            .then((goal) => {
+              dispatch(addGoalAction(goal))
+              callback()
+            })
+            .catch(() => {
+              alert('An error occured, try again.')
+            })
+        }
+      }
+
+      const handleRemoveGoal = goal => {
+        return (dispatch) => {
+          dispatch(removeGoalAction(goal.id))
+
+          return API.deleteGoal(goal.id)
+            .catch(() => {
+              dispatch(addGoalAction(goal))
+            })
+        }
+      }
+
       // Middleware functions
       const checker = store => next => action => {
         if (
@@ -188,13 +262,13 @@
         todos,
         goals,
         loading
-      }), Redux.applyMiddleware(checker, logger))
+      }), Redux.applyMiddleware(ReduxThunk.default, checker, logger))
       </script>
 
 
 
 
-
+      <!-- React -->
     <script type='text/babel'>
 
       function List(props) {
@@ -218,34 +292,18 @@
         addItem = (e) => {
           e.preventDefault()
 
-          return API.saveTodo(this.input.value)
-            .then((todo) => {
-              this.props.store.dispatch(addTodoAction(todo))
-              this.input.value = ''
-            })
-            .catch(() => {
-              alert('An error occured, try again.')
-            })
+          this.props.dispatch(handleAddTodo(
+            this.input.value,
+            () => this.input.value = ''
+          ))
         }
 
         removeItem = todo => {
-          this.props.store.dispatch(removeTodoAction(todo.id))
-
-          return API.deleteTodo(todo.id)
-            .catch(() => {
-              this.props.store.dispatch(addTodoAction(todo))
-              alert('An error has occured.')
-            })
+          this.props.dispatch(handleDeleteTodo(todo))
         }
 
         toggleItem = id => {
-          this.props.store.dispatch(toggleTodoAction(id))
-
-          return API.saveTodoToggle(id)
-            .catch(() => {
-              this.props.store.dispatch(toggleTodoAction(id))
-              alert('An error occured, try again.')
-            })
+          this.props.dispatch(handleToggleTodo(id))
         }
 
         render() {
@@ -271,27 +329,22 @@
         }
       }
 
+      const ConnectedTodos = ReactRedux.connect((state) => ({
+        todos: state.todos
+      }))(Todos)
+
       class Goals extends React.Component {
         addItem = (e) => {
           e.preventDefault()
 
-          return API.saveGoal(this.input.value)
-            .then((goal) => {
-              this.props.store.dispatch(addGoalAction(goal))
-              this.input.value = ''
-            })
-            .catch(() => {
-              alert('An error occured, try again.')
-            })
+          this.props.dispatch(handleSaveGoal(
+            this.input.value,
+            () => this.input.value = ''
+          ))
         }
 
         removeItem = goal => {
-          this.props.store.dispatch(removeGoalAction(goal.id))
-
-          return API.deleteGoal(goal.id)
-            .catch(() => {
-              this.props.store.dispatch(addGoalAction(goal))
-            })
+          this.props.dispatch(handleRemoveGoal(goal))
         }
 
         render() {
@@ -316,23 +369,19 @@
         }
       }
 
+      const ConnectedGoals = ReactRedux.connect((state) => ({
+        goals: state.goals
+      }))(Goals)
+
       class App extends React.Component {
         componentDidMount() {
-          const { store } = this.props
+          const { dispatch } = this.props
 
-          Promise.all([
-            API.fetchTodos(),
-            API.fetchGoals()
-          ]).then(([ todos, goals ]) => {
-            store.dispatch(receiveDataAction(todos, goals))
-          })
-
-          store.subscribe(() => this.forceUpdate())
+          dispatch(handleInitialData())
         }
 
         render() {
-          const { store } = this.props
-          const { todos, goals, loading } = store.getState()
+          const { loading } = this.props
 
           if (loading) {
             return <h1>Loading</h1>
@@ -340,15 +389,66 @@
           
           return (
             <div>
-              <Todos todos={todos} store={store} />
-              <Goals goals={goals} store={store} />
+              <ConnectedTodos />
+              <ConnectedGoals />
             </div>
           )
         }
       }
 
+      const ConnectedApp = ReactRedux.connect((state) => ({
+        loading: state.loading
+      }))(App)
+
+      // Library Code
+
+      // const Context = React.createContext()
+
+      // const connect = mapStateToProps => {
+      //   class Receiver extends React.Component {
+      //     componentDidMount() {
+      //       const {subscribe} = this.props.store
+
+      //        this.unsubscribe = subscribe(() => this.forceUpdate())
+      //     }
+
+      //     componentWillUnmount() {
+      //       this.unsubscribe()
+      //     }
+
+      //     render() {
+      //       const { dispatch, getState } = this.props.store
+      //       const state = getState()
+      //       const stateNeeded = mapStateToProps(state)
+            
+      //       return <Component {...stateNeeded} dispatch={dispatch} />
+      //     }
+      //   }
+
+      //   class ConnectedComponent extends React.Component {
+      //     render() {
+      //       return (
+      //         <Context.Consumer>
+      //           {(store) => <Reveiver store={store} />}
+      //         </Context.Consumer>
+      //       )
+      //     }
+      // }
+
+      // class Provider extends React.Component {
+      //   render() {
+      //     return (
+      //       <Context.Provider value={this.props.store}>
+      //         {this.props.children}
+      //       </Context.Provider>
+      //     )
+      //   }
+      // }
+
       ReactDOM.render(
-        <App store={store} />,
+        <ReactRedux.Provider store={store}>
+          <ConnectedApp />
+        </ReactRedux.Provider>,
         document.getElementById('app')
       )
       
